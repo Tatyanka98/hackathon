@@ -360,4 +360,4 @@ def parse_email():
     return jsonify({'error': 'Реальный импорт из почты отключён. Используйте demo@example.com для теста.'}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=8080)
