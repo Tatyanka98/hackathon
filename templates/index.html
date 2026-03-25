@@ -676,7 +676,7 @@
 
                 async function checkAuth() {
                     try {
-                        const res = await fetch('/api/profile', {
+                        const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
                             credentials: 'include'
                         });
                         if (res.status === 401) {
@@ -706,7 +706,7 @@
                 }
 
                 async function loadSubscriptions() {
-                    const res = await fetch('/api/subscriptions', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/subscriptions', {
                         credentials: 'include'
                     });
                     const subs = await res.json();
@@ -764,7 +764,7 @@
                             e.stopPropagation();
                             const id = btn.dataset.id;
                             if (confirm('Удалить подписку?')) {
-                                await fetch(`/api/subscriptions/${id}`, {
+                                await fetch(`https://hackathon-production-ac65.up.railway.app/api/subscriptions/${id}`, {
                                     method: 'DELETE',
                                     credentials: 'include'
                                 });
@@ -783,7 +783,7 @@
                 }
 
                 async function loadRecommendations() {
-                    const res = await fetch('/api/recommendations', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/recommendations', {
                         credentials: 'include'
                     });
                     const recs = await res.json();
@@ -806,7 +806,7 @@
                             e.stopPropagation();
                             btn.disabled = true;
                             btn.innerText = 'Подключение...';
-                            const res = await fetch('/api/connect-recommendation', {
+                            const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/connect-recommendation', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json'
@@ -833,7 +833,7 @@
                 }
 
                 async function loadProfile() {
-                    const res = await fetch('/api/profile', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
                         credentials: 'include'
                     });
                     const profile = await res.json();
@@ -850,7 +850,7 @@
                         subList.appendChild(li);
                     });
 
-                    const historyRes = await fetch('/api/history', {
+                    const historyRes = await fetch('https://hackathon-production-ac65.up.railway.app/api/history', {
                         credentials: 'include'
                     });
                     const history = await historyRes.json();
@@ -944,7 +944,7 @@
 
                 // Загружает данные аналитики с сервера, сохраняет и обновляет всё
                 async function loadAnalyticsData() {
-                    const res = await fetch('/api/analytics', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/analytics', {
                         credentials: 'include'
                     });
                     analyticsData = await res.json();
@@ -954,7 +954,7 @@
 
                 // Уведомления о предстоящих списаниях
                 async function loadUpcomingNotifications() {
-                    const res = await fetch('/api/upcoming-payments', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/upcoming-payments', {
                         credentials: 'include'
                     });
                     const upcoming = await res.json();
@@ -1047,7 +1047,7 @@
                     const desc = document.getElementById('subDesc').value;
                     if (!name || isNaN(price)) return alert('Заполните название и цену');
 
-                    const res = await fetch('/api/subscriptions', {
+                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/subscriptions', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1087,7 +1087,7 @@
                     const newPayDay = parseInt(document.getElementById('editPayDay').value);
                     if (isNaN(newPrice) || isNaN(newPayDay)) return alert('Введите корректные значения');
                     if (window.currentEditId) {
-                        await fetch(`/api/subscriptions/${window.currentEditId}`, {
+                        await fetch(`https://hackathon-production-ac65.up.railway.app/api/subscriptions/${window.currentEditId}`, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -1110,7 +1110,7 @@
                 document.getElementById('avatarImg').addEventListener('click', async() => {
                     const newUrl = prompt('Введите URL новой аватарки', document.getElementById('avatarImg').src);
                     if (newUrl) {
-                        await fetch('/api/profile', {
+                        await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -1127,7 +1127,7 @@
                 // Смена валюты
                 document.getElementById('changeCurrencyBtn').addEventListener('click', async() => {
                     const newCurrency = window.currency === '₽' ? '$' : '₽';
-                    await fetch('/api/profile', {
+                    await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1186,7 +1186,7 @@
                             document.getElementById('importResults').style.display = 'none';
 
                             try {
-                                const res = await fetch('/api/parse-email', {
+                                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/parse-email', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json'
