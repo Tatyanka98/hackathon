@@ -646,14 +646,20 @@
     <div id="emailImportModal" class="modal">
         <div class="modal-content">
             <h3><i class="fas fa-envelope"></i> Импорт подписок из почты</h3>
-            <p style="color: #6b7280; margin-bottom: 10px;">Введите данные для подключения к почтовому ящику. Пароль не сохраняется.</p>
+            <p style="color: #6b7280; margin-bottom: 10px;">
+                Подключимся к вашей почте по IMAP и найдём письма о подписках за последние 90 дней. Пароль используется только для подключения и <strong>нигде не сохраняется</strong>.
+            </p>
+            <p style="color: #f97316; font-size: 13px; margin-bottom: 12px;">
+                ⚠️ Для Gmail нужен <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#4361ee;">пароль приложения</a>, а не обычный пароль.
+            </p>
             <label>Email</label>
             <input type="email" id="importEmail" placeholder="your@email.com">
             <label>Пароль</label>
-            <input type="password" id="importPassword" placeholder="Пароль">
-            <label>IMAP-сервер (опционально)</label>
-            <input type="text" id="importServer" placeholder="imap.gmail.com" value="imap.gmail.com">
+            <input type="password" id="importPassword" placeholder="Пароль (для Gmail — пароль приложения)">
+            <label>IMAP-сервер (оставьте пустым — определим автоматически)</label>
+            <input type="text" id="importServer" placeholder="imap.gmail.com">
             <div id="importStatus" class="error-message"></div>
+            <div id="importResults" style="display:none; margin-top:12px; max-height:180px; overflow-y:auto;"></div>
             <div class="modal-actions">
                 <button class="btn-outline" id="cancelImportBtn">Отмена</button>
                 <button class="btn-primary" id="startImportBtn">Импортировать</button>
@@ -663,60 +669,60 @@
 
     <script>
         (function() {
-            let pieChart, monthBarChart, catBarChart;
-            let currentPeriod = 'month';
-            window.currency = '₽';
-            let analyticsData = null; // сохранённые данные аналитики
+                let pieChart, monthBarChart, catBarChart;
+                let currentPeriod = 'month';
+                window.currency = '₽';
+                let analyticsData = null; // сохранённые данные аналитики
 
-            async function checkAuth() {
-                try {
-                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
-                        credentials: 'include'
-                    });
-                    if (res.status === 401) {
+                async function checkAuth() {
+                    try {
+                        const res = await fetch('/api/profile', {
+                            credentials: 'include'
+                        });
+                        if (res.status === 401) {
+                            window.location.href = '/login';
+                            return false;
+                        }
+                        return true;
+                    } catch (e) {
                         window.location.href = '/login';
                         return false;
                     }
-                    return true;
-                } catch (e) {
-                    window.location.href = '/login';
-                    return false;
                 }
-            }
 
-            async function loadAllData() {
-                if (!await checkAuth()) return;
-                showPage('mainPage');
-                await loadProfile();
-                await loadSubscriptions();
-                await loadRecommendations();
-                await loadAnalyticsData(); // загружаем аналитику и отрисовываем
-                await loadUpcomingNotifications();
-            }
+                async function loadAllData() {
+                    if (!await checkAuth()) return;
+                    showPage('mainPage');
+                    await loadProfile();
+                    await loadSubscriptions();
+                    await loadRecommendations();
+                    await loadAnalyticsData(); // загружаем аналитику и отрисовываем
+                    await loadUpcomingNotifications();
+                }
 
-            function showPage(pageId) {
-                document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
-                document.getElementById(pageId).classList.add('active-page');
-            }
+                function showPage(pageId) {
+                    document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+                    document.getElementById(pageId).classList.add('active-page');
+                }
 
-            async function loadSubscriptions() {
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/subscriptions', {
-                    credentials: 'include'
-                });
-                const subs = await res.json();
-                renderSubscriptions(subs);
-                updateTotalMonth(subs);
-                return subs;
-            }
+                async function loadSubscriptions() {
+                    const res = await fetch('/api/subscriptions', {
+                        credentials: 'include'
+                    });
+                    const subs = await res.json();
+                    renderSubscriptions(subs);
+                    updateTotalMonth(subs);
+                    return subs;
+                }
 
-            function renderSubscriptions(subs) {
-                const container = document.getElementById('subscriptionsList');
-                container.innerHTML = '';
-                subs.forEach(sub => {
-                    const card = document.createElement('div');
-                    card.className = 'sub-card';
-                    card.dataset.id = sub.id;
-                    card.innerHTML = `
+                function renderSubscriptions(subs) {
+                    const container = document.getElementById('subscriptionsList');
+                    container.innerHTML = '';
+                    subs.forEach(sub => {
+                        const card = document.createElement('div');
+                        card.className = 'sub-card';
+                        card.dataset.id = sub.id;
+                        card.innerHTML = `
                         <div class="sub-title">${sub.name}</div>
                         <div class="sub-desc">${sub.description || ''}</div>
                         <div class="sub-meta">
@@ -729,64 +735,64 @@
                             <button class="btn-small delete-btn" data-id="${sub.id}">✖ Отключить</button>
                         </div>
                     `;
-                    card.addEventListener('click', (e) => {
-                        if (!e.target.classList.contains('btn-small')) {
-                            document.querySelectorAll('.action-buttons').forEach(b => b.classList.add('hidden'));
-                            const actions = card.querySelector('.action-buttons');
-                            if (actions) actions.classList.remove('hidden');
-                        }
+                        card.addEventListener('click', (e) => {
+                            if (!e.target.classList.contains('btn-small')) {
+                                document.querySelectorAll('.action-buttons').forEach(b => b.classList.add('hidden'));
+                                const actions = card.querySelector('.action-buttons');
+                                if (actions) actions.classList.remove('hidden');
+                            }
+                        });
+                        container.appendChild(card);
                     });
-                    container.appendChild(card);
-                });
 
-                document.querySelectorAll('.edit-btn').forEach(btn => {
-                    btn.addEventListener('click', async(e) => {
-                        e.stopPropagation();
-                        const id = btn.dataset.id;
-                        const sub = subs.find(s => s.id == id);
-                        if (sub) {
-                            document.getElementById('editPrice').value = sub.price;
-                            document.getElementById('editPayDay').value = sub.payDay;
-                            window.currentEditId = id;
-                            document.getElementById('editModal').classList.add('active');
-                        }
+                    document.querySelectorAll('.edit-btn').forEach(btn => {
+                        btn.addEventListener('click', async(e) => {
+                            e.stopPropagation();
+                            const id = btn.dataset.id;
+                            const sub = subs.find(s => s.id == id);
+                            if (sub) {
+                                document.getElementById('editPrice').value = sub.price;
+                                document.getElementById('editPayDay').value = sub.payDay;
+                                window.currentEditId = id;
+                                document.getElementById('editModal').classList.add('active');
+                            }
+                        });
                     });
-                });
 
-                document.querySelectorAll('.delete-btn').forEach(btn => {
-                    btn.addEventListener('click', async(e) => {
-                        e.stopPropagation();
-                        const id = btn.dataset.id;
-                        if (confirm('Удалить подписку?')) {
-                            await fetch(`https://hackathon-production-ac65.up.railway.app/api/subscriptions/${id}`, {
-                                method: 'DELETE',
-                                credentials: 'include'
-                            });
-                            await loadSubscriptions();
-                            loadProfile();
-                            await loadAnalyticsData(); // обновляем аналитику
-                            loadUpcomingNotifications();
-                        }
+                    document.querySelectorAll('.delete-btn').forEach(btn => {
+                        btn.addEventListener('click', async(e) => {
+                            e.stopPropagation();
+                            const id = btn.dataset.id;
+                            if (confirm('Удалить подписку?')) {
+                                await fetch(`/api/subscriptions/${id}`, {
+                                    method: 'DELETE',
+                                    credentials: 'include'
+                                });
+                                await loadSubscriptions();
+                                loadProfile();
+                                await loadAnalyticsData(); // обновляем аналитику
+                                loadUpcomingNotifications();
+                            }
+                        });
                     });
-                });
-            }
+                }
 
-            function updateTotalMonth(subs) {
-                const total = subs.reduce((acc, s) => acc + s.price, 0);
-                document.getElementById('monthTotal').innerText = total + ' ' + window.currency;
-            }
+                function updateTotalMonth(subs) {
+                    const total = subs.reduce((acc, s) => acc + s.price, 0);
+                    document.getElementById('monthTotal').innerText = total + ' ' + window.currency;
+                }
 
-            async function loadRecommendations() {
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/recommendations', {
-                    credentials: 'include'
-                });
-                const recs = await res.json();
-                const container = document.getElementById('recommendationsList');
-                container.innerHTML = '';
-                recs.forEach(rec => {
-                    const card = document.createElement('div');
-                    card.className = 'sub-card';
-                    card.innerHTML = `
+                async function loadRecommendations() {
+                    const res = await fetch('/api/recommendations', {
+                        credentials: 'include'
+                    });
+                    const recs = await res.json();
+                    const container = document.getElementById('recommendationsList');
+                    container.innerHTML = '';
+                    recs.forEach(rec => {
+                        const card = document.createElement('div');
+                        card.className = 'sub-card';
+                        card.innerHTML = `
                         <div class="sub-title">${rec.name}</div>
                         <div class="sub-desc">${rec.description}</div>
                         <div class="sub-meta">
@@ -795,416 +801,442 @@
                         </div>
                         <button class="btn-primary" style="margin-top: 12px; width:100%;" data-id="${rec.id}">Подключить</button>
                     `;
-                    const btn = card.querySelector('button');
-                    btn.addEventListener('click', async(e) => {
-                        e.stopPropagation();
-                        btn.disabled = true;
-                        btn.innerText = 'Подключение...';
-                        const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/connect-recommendation', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                recommendationId: rec.id
-                            }),
-                            credentials: 'include'
+                        const btn = card.querySelector('button');
+                        btn.addEventListener('click', async(e) => {
+                            e.stopPropagation();
+                            btn.disabled = true;
+                            btn.innerText = 'Подключение...';
+                            const res = await fetch('/api/connect-recommendation', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    recommendationId: rec.id
+                                }),
+                                credentials: 'include'
+                            });
+                            if (res.ok) {
+                                await loadSubscriptions();
+                                loadProfile();
+                                await loadAnalyticsData(); // обновляем аналитику
+                                loadUpcomingNotifications();
+                            } else {
+                                const err = await res.json();
+                                alert(err.error || 'Ошибка при подключении');
+                            }
+                            btn.disabled = false;
+                            btn.innerText = 'Подключить';
                         });
-                        if (res.ok) {
-                            await loadSubscriptions();
-                            loadProfile();
-                            await loadAnalyticsData(); // обновляем аналитику
-                            loadUpcomingNotifications();
-                        } else {
-                            const err = await res.json();
-                            alert(err.error || 'Ошибка при подключении');
-                        }
-                        btn.disabled = false;
-                        btn.innerText = 'Подключить';
+                        container.appendChild(card);
                     });
-                    container.appendChild(card);
-                });
-            }
-
-            async function loadProfile() {
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
-                    credentials: 'include'
-                });
-                const profile = await res.json();
-                window.currency = profile.currency;
-                document.getElementById('profileName').innerText = profile.name;
-                document.getElementById('profileEmail').innerText = profile.email;
-                document.getElementById('avatarImg').src = profile.avatar;
-
-                const subList = document.getElementById('profileSubscriptionsList');
-                subList.innerHTML = '';
-                profile.subscriptions.forEach(name => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<i class="fas fa-check-circle" style="color:#22c55e;"></i> ${name}`;
-                    subList.appendChild(li);
-                });
-
-                const historyRes = await fetch('https://hackathon-production-ac65.up.railway.app/api/history', {
-                    credentials: 'include'
-                });
-                const history = await historyRes.json();
-                const historyDiv = document.getElementById('historyList');
-                historyDiv.innerHTML = '';
-                history.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'history-item';
-                    div.innerText = `${item.action} (${new Date(item.timestamp).toLocaleDateString()})`;
-                    historyDiv.appendChild(div);
-                });
-            }
-
-            // Устанавливает статические карточки и прогноз (один раз при загрузке)
-            function setAnalyticsSummary(data) {
-                document.getElementById('analyticsMonth').innerText = Math.round(data.totalMonth) + ' ' + window.currency;
-                document.getElementById('analytics3Months').innerText = Math.round(data.total3Months) + ' ' + window.currency;
-                document.getElementById('analyticsYear').innerText = Math.round(data.totalYear) + ' ' + window.currency;
-                document.getElementById('analyticsCount').innerText = data.activeCount;
-                document.getElementById('forecastMonth').innerText = Math.round(data.forecastNextMonth) + ' ' + window.currency;
-                document.getElementById('forecastYear').innerText = Math.round(data.forecastNextYear) + ' ' + window.currency;
-            }
-
-            // Отрисовывает только графики на основе выбранного периода
-            function renderCharts(period, data) {
-                // Круговая диаграмма
-                if (pieChart) pieChart.destroy();
-                const ctxPie = document.getElementById('categoryPieChart').getContext('2d');
-                pieChart = new Chart(ctxPie, {
-                    type: 'pie',
-                    data: {
-                        labels: data.categories,
-                        datasets: [{
-                            data: data.categorySums,
-                            backgroundColor: ['#4361ee', '#f97316', '#10b981', '#8b5cf6', '#ec4899']
-                        }]
-                    }
-                });
-
-                // Столбчатая по месяцам с учётом периода
-                let months = data.months;
-                let monthlyData = data.monthlyData;
-                if (period === 'month') {
-                    months = [months[months.length - 1]];
-                    monthlyData = [data.totalMonth];
-                } else if (period === '3months') {
-                    months = months.slice(-3);
-                    monthlyData = monthlyData.slice(-3);
-                } // для года оставляем все 6 месяцев
-
-                if (monthBarChart) monthBarChart.destroy();
-                const ctxBar = document.getElementById('monthlyBarChart').getContext('2d');
-                monthBarChart = new Chart(ctxBar, {
-                    type: 'bar',
-                    data: {
-                        labels: months,
-                        datasets: [{
-                            label: 'Траты',
-                            data: monthlyData,
-                            backgroundColor: '#4361ee'
-                        }]
-                    }
-                });
-
-                // Сравнение с прошлым месяцем (только для месяца)
-                if (period === 'month' && monthlyData.length >= 2) {
-                    const last = monthlyData[monthlyData.length - 1];
-                    const prev = monthlyData[monthlyData.length - 2];
-                    const diff = last - prev;
-                    const compareText = diff > 0 ? `больше на ${diff} ${window.currency}` : (diff < 0 ? `меньше на ${-diff} ${window.currency}` : 'столько же');
-                    document.getElementById('monthComparison').innerText = `В этом месяце вы потратили ${compareText} по сравнению с прошлым.`;
-                } else {
-                    document.getElementById('monthComparison').innerText = '';
                 }
 
-                // Столбчатая по категориям
-                if (catBarChart) catBarChart.destroy();
-                const ctxCatBar = document.getElementById('categoryBarChart').getContext('2d');
-                catBarChart = new Chart(ctxCatBar, {
-                    type: 'bar',
-                    data: {
-                        labels: data.categories,
-                        datasets: [{
-                            label: 'Сумма',
-                            data: data.categorySums,
-                            backgroundColor: '#f97316'
-                        }]
+                async function loadProfile() {
+                    const res = await fetch('/api/profile', {
+                        credentials: 'include'
+                    });
+                    const profile = await res.json();
+                    window.currency = profile.currency;
+                    document.getElementById('profileName').innerText = profile.name;
+                    document.getElementById('profileEmail').innerText = profile.email;
+                    document.getElementById('avatarImg').src = profile.avatar;
+
+                    const subList = document.getElementById('profileSubscriptionsList');
+                    subList.innerHTML = '';
+                    profile.subscriptions.forEach(name => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<i class="fas fa-check-circle" style="color:#22c55e;"></i> ${name}`;
+                        subList.appendChild(li);
+                    });
+
+                    const historyRes = await fetch('/api/history', {
+                        credentials: 'include'
+                    });
+                    const history = await historyRes.json();
+                    const historyDiv = document.getElementById('historyList');
+                    historyDiv.innerHTML = '';
+                    history.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'history-item';
+                        div.innerText = `${item.action} (${new Date(item.timestamp).toLocaleDateString()})`;
+                        historyDiv.appendChild(div);
+                    });
+                }
+
+                // Устанавливает статические карточки и прогноз (один раз при загрузке)
+                function setAnalyticsSummary(data) {
+                    document.getElementById('analyticsMonth').innerText = Math.round(data.totalMonth) + ' ' + window.currency;
+                    document.getElementById('analytics3Months').innerText = Math.round(data.total3Months) + ' ' + window.currency;
+                    document.getElementById('analyticsYear').innerText = Math.round(data.totalYear) + ' ' + window.currency;
+                    document.getElementById('analyticsCount').innerText = data.activeCount;
+                    document.getElementById('forecastMonth').innerText = Math.round(data.forecastNextMonth) + ' ' + window.currency;
+                    document.getElementById('forecastYear').innerText = Math.round(data.forecastNextYear) + ' ' + window.currency;
+                }
+
+                // Отрисовывает только графики на основе выбранного периода
+                function renderCharts(period, data) {
+                    // Круговая диаграмма
+                    if (pieChart) pieChart.destroy();
+                    const ctxPie = document.getElementById('categoryPieChart').getContext('2d');
+                    pieChart = new Chart(ctxPie, {
+                        type: 'pie',
+                        data: {
+                            labels: data.categories,
+                            datasets: [{
+                                data: data.categorySums,
+                                backgroundColor: ['#4361ee', '#f97316', '#10b981', '#8b5cf6', '#ec4899']
+                            }]
+                        }
+                    });
+
+                    // Столбчатая по месяцам с учётом периода
+                    let months = data.months;
+                    let monthlyData = data.monthlyData;
+                    if (period === 'month') {
+                        months = [months[months.length - 1]];
+                        monthlyData = [data.totalMonth];
+                    } else if (period === '3months') {
+                        months = months.slice(-3);
+                        monthlyData = monthlyData.slice(-3);
+                    } // для года оставляем все 6 месяцев
+
+                    if (monthBarChart) monthBarChart.destroy();
+                    const ctxBar = document.getElementById('monthlyBarChart').getContext('2d');
+                    monthBarChart = new Chart(ctxBar, {
+                        type: 'bar',
+                        data: {
+                            labels: months,
+                            datasets: [{
+                                label: 'Траты',
+                                data: monthlyData,
+                                backgroundColor: '#4361ee'
+                            }]
+                        }
+                    });
+
+                    // Сравнение с прошлым месяцем (только для месяца)
+                    if (period === 'month' && monthlyData.length >= 2) {
+                        const last = monthlyData[monthlyData.length - 1];
+                        const prev = monthlyData[monthlyData.length - 2];
+                        const diff = last - prev;
+                        const compareText = diff > 0 ? `больше на ${diff} ${window.currency}` : (diff < 0 ? `меньше на ${-diff} ${window.currency}` : 'столько же');
+                        document.getElementById('monthComparison').innerText = `В этом месяце вы потратили ${compareText} по сравнению с прошлым.`;
+                    } else {
+                        document.getElementById('monthComparison').innerText = '';
                     }
-                });
-            }
 
-            // Загружает данные аналитики с сервера, сохраняет и обновляет всё
-            async function loadAnalyticsData() {
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/analytics', {
-                    credentials: 'include'
-                });
-                analyticsData = await res.json();
-                setAnalyticsSummary(analyticsData);
-                renderCharts(currentPeriod, analyticsData);
-            }
+                    // Столбчатая по категориям
+                    if (catBarChart) catBarChart.destroy();
+                    const ctxCatBar = document.getElementById('categoryBarChart').getContext('2d');
+                    catBarChart = new Chart(ctxCatBar, {
+                        type: 'bar',
+                        data: {
+                            labels: data.categories,
+                            datasets: [{
+                                label: 'Сумма',
+                                data: data.categorySums,
+                                backgroundColor: '#f97316'
+                            }]
+                        }
+                    });
+                }
 
-            // Уведомления о предстоящих списаниях
-            async function loadUpcomingNotifications() {
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/upcoming-payments', {
-                    credentials: 'include'
-                });
-                const upcoming = await res.json();
-                const badge = document.getElementById('notificationsBadge');
-                const list = document.getElementById('notificationsList');
-                if (upcoming.length > 0) {
-                    badge.classList.remove('hidden');
-                    badge.innerText = upcoming.length;
-                    list.innerHTML = upcoming.map(p => `
+                // Загружает данные аналитики с сервера, сохраняет и обновляет всё
+                async function loadAnalyticsData() {
+                    const res = await fetch('/api/analytics', {
+                        credentials: 'include'
+                    });
+                    analyticsData = await res.json();
+                    setAnalyticsSummary(analyticsData);
+                    renderCharts(currentPeriod, analyticsData);
+                }
+
+                // Уведомления о предстоящих списаниях
+                async function loadUpcomingNotifications() {
+                    const res = await fetch('/api/upcoming-payments', {
+                        credentials: 'include'
+                    });
+                    const upcoming = await res.json();
+                    const badge = document.getElementById('notificationsBadge');
+                    const list = document.getElementById('notificationsList');
+                    if (upcoming.length > 0) {
+                        badge.classList.remove('hidden');
+                        badge.innerText = upcoming.length;
+                        list.innerHTML = upcoming.map(p => `
                         <div class="notification-item">
                             <strong>${p.name}</strong> — ${p.price} ${window.currency}<br>
                             <small>Списание через ${p.daysLeft} дн. (${p.payDay} число)</small>
                         </div>
                     `).join('');
-                } else {
-                    badge.classList.add('hidden');
-                    list.innerHTML = '<div class="notification-item">Нет ближайших списаний</div>';
-                }
-            }
-
-            // Навигация
-            document.querySelectorAll('[data-page]').forEach(btn => {
-                btn.addEventListener('click', async(e) => {
-                    const page = btn.dataset.page;
-                    if (page === 'main') {
-                        showPage('mainPage');
-                        await loadSubscriptions();
-                    } else if (page === 'analytics') {
-                        showPage('analyticsPage');
-                        // Если данные ещё не загружены, загрузим (но они должны быть)
-                        if (!analyticsData) await loadAnalyticsData();
-                        else renderCharts(currentPeriod, analyticsData);
-                    } else if (page === 'profile') {
-                        showPage('profilePage');
-                        await loadProfile();
+                    } else {
+                        badge.classList.add('hidden');
+                        list.innerHTML = '<div class="notification-item">Нет ближайших списаний</div>';
                     }
-                });
-            });
+                }
 
-            document.getElementById('goToRecommendations').addEventListener('click', () => {
-                showPage('mainPage');
-                setTimeout(() => {
-                    document.getElementById('recommendationsHeader').scrollIntoView({
+                // Навигация
+                document.querySelectorAll('[data-page]').forEach(btn => {
+                    btn.addEventListener('click', async(e) => {
+                        const page = btn.dataset.page;
+                        if (page === 'main') {
+                            showPage('mainPage');
+                            await loadSubscriptions();
+                        } else if (page === 'analytics') {
+                            showPage('analyticsPage');
+                            // Если данные ещё не загружены, загрузим (но они должны быть)
+                            if (!analyticsData) await loadAnalyticsData();
+                            else renderCharts(currentPeriod, analyticsData);
+                        } else if (page === 'profile') {
+                            showPage('profilePage');
+                            await loadProfile();
+                        }
+                    });
+                });
+
+                document.getElementById('goToRecommendations').addEventListener('click', () => {
+                    showPage('mainPage');
+                    setTimeout(() => {
+                        document.getElementById('recommendationsHeader').scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }, 100);
+                });
+
+                document.getElementById('scrollToTopBtn').addEventListener('click', () => {
+                    window.scrollTo({
+                        top: 0,
                         behavior: 'smooth'
                     });
-                }, 100);
-            });
-
-            document.getElementById('scrollToTopBtn').addEventListener('click', () => {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
                 });
-            });
-            document.getElementById('profileScrollTop').addEventListener('click', () => {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-            });
-
-            // Уведомления (колокольчик)
-            document.getElementById('notificationsBtn').addEventListener('click', () => {
-                document.getElementById('notificationsDropdown').classList.toggle('show');
-            });
-            window.addEventListener('click', (e) => {
-                if (!e.target.closest('.nav-right')) {
-                    document.getElementById('notificationsDropdown').classList.remove('show');
-                }
-            });
-
-            document.getElementById('logoutBtn').addEventListener('click', () => {
-                window.location.href = '/logout';
-            });
-
-            // Добавление подписки
-            document.getElementById('addSubscriptionBtn').addEventListener('click', () => {
-                document.getElementById('addModal').classList.add('active');
-            });
-
-            document.getElementById('cancelModalBtn').addEventListener('click', () => {
-                document.getElementById('addModal').classList.remove('active');
-            });
-
-            document.getElementById('saveSubscriptionBtn').addEventListener('click', async() => {
-                const name = document.getElementById('subName').value;
-                const price = parseFloat(document.getElementById('subPrice').value);
-                const category = document.getElementById('subCategory').value;
-                const day = parseInt(document.getElementById('subDay').value) || 1;
-                const desc = document.getElementById('subDesc').value;
-                if (!name || isNaN(price)) return alert('Заполните название и цену');
-
-                const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/subscriptions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name,
-                        price,
-                        category,
-                        payDay: day,
-                        description: desc
-                    }),
-                    credentials: 'include'
-                });
-                if (res.ok) {
-                    document.getElementById('addModal').classList.remove('active');
-                    document.getElementById('subName').value = '';
-                    document.getElementById('subPrice').value = '';
-                    document.getElementById('subDay').value = '1';
-                    document.getElementById('subDesc').value = '';
-                    await loadSubscriptions();
-                    loadProfile();
-                    await loadAnalyticsData(); // обновляем аналитику
-                    loadUpcomingNotifications();
-                } else {
-                    const err = await res.json();
-                    alert(err.error || 'Ошибка');
-                }
-            });
-
-            // Редактирование (цена + день)
-            document.getElementById('cancelEditBtn').addEventListener('click', () => {
-                document.getElementById('editModal').classList.remove('active');
-            });
-
-            document.getElementById('saveEditBtn').addEventListener('click', async() => {
-                const newPrice = parseFloat(document.getElementById('editPrice').value);
-                const newPayDay = parseInt(document.getElementById('editPayDay').value);
-                if (isNaN(newPrice) || isNaN(newPayDay)) return alert('Введите корректные значения');
-                if (window.currentEditId) {
-                    await fetch(`https://hackathon-production-ac65.up.railway.app/api/subscriptions/${window.currentEditId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            price: newPrice,
-                            payDay: newPayDay
-                        }),
-                        credentials: 'include'
+                document.getElementById('profileScrollTop').addEventListener('click', () => {
+                    window.scrollTo({
+                        top: 0,
+                        behavior: 'smooth'
                     });
-                    document.getElementById('editModal').classList.remove('active');
-                    await loadSubscriptions();
-                    loadProfile();
-                    await loadAnalyticsData(); // обновляем аналитику
-                    loadUpcomingNotifications();
-                }
-            });
-
-            // Смена аватарки
-            document.getElementById('avatarImg').addEventListener('click', async() => {
-                const newUrl = prompt('Введите URL новой аватарки', document.getElementById('avatarImg').src);
-                if (newUrl) {
-                    await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            avatar: newUrl
-                        }),
-                        credentials: 'include'
-                    });
-                    document.getElementById('avatarImg').src = newUrl;
-                }
-            });
-
-            // Смена валюты
-            document.getElementById('changeCurrencyBtn').addEventListener('click', async() => {
-                const newCurrency = window.currency === '₽' ? '$' : '₽';
-                await fetch('https://hackathon-production-ac65.up.railway.app/api/profile', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        currency: newCurrency
-                    }),
-                    credentials: 'include'
                 });
-                window.currency = newCurrency;
-                loadSubscriptions();
-                if (analyticsData) {
-                    // Обновляем отображение валюты в карточках и графиках
-                    setAnalyticsSummary(analyticsData);
-                    renderCharts(currentPeriod, analyticsData);
-                }
-                loadProfile();
-                loadUpcomingNotifications();
-            });
 
-            // Выбор периода аналитики (теперь только перерисовка графиков)
-            document.querySelectorAll('.period-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentPeriod = btn.dataset.period;
-                    if (analyticsData) {
-                        renderCharts(currentPeriod, analyticsData);
+                // Уведомления (колокольчик)
+                document.getElementById('notificationsBtn').addEventListener('click', () => {
+                    document.getElementById('notificationsDropdown').classList.toggle('show');
+                });
+                window.addEventListener('click', (e) => {
+                    if (!e.target.closest('.nav-right')) {
+                        document.getElementById('notificationsDropdown').classList.remove('show');
                     }
                 });
-            });
 
-            // Импорт из почты
-            document.getElementById('importEmailBtn').addEventListener('click', () => {
-                document.getElementById('emailImportModal').classList.add('active');
-                document.getElementById('importStatus').innerText = '';
-            });
+                document.getElementById('logoutBtn').addEventListener('click', () => {
+                    window.location.href = '/logout';
+                });
 
-            document.getElementById('cancelImportBtn').addEventListener('click', () => {
-                document.getElementById('emailImportModal').classList.remove('active');
-            });
+                // Добавление подписки
+                document.getElementById('addSubscriptionBtn').addEventListener('click', () => {
+                    document.getElementById('addModal').classList.add('active');
+                });
 
-            document.getElementById('startImportBtn').addEventListener('click', async() => {
-                const email = document.getElementById('importEmail').value;
-                const password = document.getElementById('importPassword').value;
-                const server = document.getElementById('importServer').value || 'imap.gmail.com';
-                if (!email || !password) {
-                    document.getElementById('importStatus').innerText = 'Введите email и пароль';
-                    return;
-                }
-                document.getElementById('startImportBtn').disabled = true;
-                document.getElementById('startImportBtn').innerText = 'Импортируем...';
-                document.getElementById('importStatus').innerText = '';
+                document.getElementById('cancelModalBtn').addEventListener('click', () => {
+                    document.getElementById('addModal').classList.remove('active');
+                });
 
-                try {
-                    const res = await fetch('https://hackathon-production-ac65.up.railway.app/api/parse-email', {
+                document.getElementById('saveSubscriptionBtn').addEventListener('click', async() => {
+                    const name = document.getElementById('subName').value;
+                    const price = parseFloat(document.getElementById('subPrice').value);
+                    const category = document.getElementById('subCategory').value;
+                    const day = parseInt(document.getElementById('subDay').value) || 1;
+                    const desc = document.getElementById('subDesc').value;
+                    if (!name || isNaN(price)) return alert('Заполните название и цену');
+
+                    const res = await fetch('/api/subscriptions', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            email,
-                            password,
-                            server
+                            name,
+                            price,
+                            category,
+                            payDay: day,
+                            description: desc
                         }),
                         credentials: 'include'
                     });
-                    const data = await res.json();
                     if (res.ok) {
-                        document.getElementById('importStatus').style.color = '#10b981';
-                        document.getElementById('importStatus').innerText = data.message || 'Импорт завершён';
+                        document.getElementById('addModal').classList.remove('active');
+                        document.getElementById('subName').value = '';
+                        document.getElementById('subPrice').value = '';
+                        document.getElementById('subDay').value = '1';
+                        document.getElementById('subDesc').value = '';
                         await loadSubscriptions();
                         loadProfile();
                         await loadAnalyticsData(); // обновляем аналитику
                         loadUpcomingNotifications();
-                        setTimeout(() => document.getElementById('emailImportModal').classList.remove('active'), 1500);
+                    } else {
+                        const err = await res.json();
+                        alert(err.error || 'Ошибка');
+                    }
+                });
+
+                // Редактирование (цена + день)
+                document.getElementById('cancelEditBtn').addEventListener('click', () => {
+                    document.getElementById('editModal').classList.remove('active');
+                });
+
+                document.getElementById('saveEditBtn').addEventListener('click', async() => {
+                    const newPrice = parseFloat(document.getElementById('editPrice').value);
+                    const newPayDay = parseInt(document.getElementById('editPayDay').value);
+                    if (isNaN(newPrice) || isNaN(newPayDay)) return alert('Введите корректные значения');
+                    if (window.currentEditId) {
+                        await fetch(`/api/subscriptions/${window.currentEditId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                price: newPrice,
+                                payDay: newPayDay
+                            }),
+                            credentials: 'include'
+                        });
+                        document.getElementById('editModal').classList.remove('active');
+                        await loadSubscriptions();
+                        loadProfile();
+                        await loadAnalyticsData(); // обновляем аналитику
+                        loadUpcomingNotifications();
+                    }
+                });
+
+                // Смена аватарки
+                document.getElementById('avatarImg').addEventListener('click', async() => {
+                    const newUrl = prompt('Введите URL новой аватарки', document.getElementById('avatarImg').src);
+                    if (newUrl) {
+                        await fetch('/api/profile', {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                avatar: newUrl
+                            }),
+                            credentials: 'include'
+                        });
+                        document.getElementById('avatarImg').src = newUrl;
+                    }
+                });
+
+                // Смена валюты
+                document.getElementById('changeCurrencyBtn').addEventListener('click', async() => {
+                    const newCurrency = window.currency === '₽' ? '$' : '₽';
+                    await fetch('/api/profile', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            currency: newCurrency
+                        }),
+                        credentials: 'include'
+                    });
+                    window.currency = newCurrency;
+                    loadSubscriptions();
+                    if (analyticsData) {
+                        // Обновляем отображение валюты в карточках и графиках
+                        setAnalyticsSummary(analyticsData);
+                        renderCharts(currentPeriod, analyticsData);
+                    }
+                    loadProfile();
+                    loadUpcomingNotifications();
+                });
+
+                // Выбор периода аналитики (теперь только перерисовка графиков)
+                document.querySelectorAll('.period-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        currentPeriod = btn.dataset.period;
+                        if (analyticsData) {
+                            renderCharts(currentPeriod, analyticsData);
+                        }
+                    });
+                });
+
+                document.getElementById('importEmailBtn').addEventListener('click', () => {
+                    document.getElementById('emailImportModal').classList.add('active');
+                    document.getElementById('importStatus').innerText = '';
+                    document.getElementById('importResults').style.display = 'none';
+                    document.getElementById('importResults').innerHTML = '';
+                });
+
+                document.getElementById('cancelImportBtn').addEventListener('click', () => {
+                    document.getElementById('emailImportModal').classList.remove('active');
+                });
+
+                document.getElementById('startImportBtn').addEventListener('click', async() => {
+                            const email = document.getElementById('importEmail').value;
+                            const password = document.getElementById('importPassword').value;
+                            const server = document.getElementById('importServer').value.trim();
+                            if (!email || !password) {
+                                document.getElementById('importStatus').style.color = '#dc2626';
+                                document.getElementById('importStatus').innerText = 'Введите email и пароль';
+                                return;
+                            }
+                            document.getElementById('startImportBtn').disabled = true;
+                            document.getElementById('startImportBtn').innerText = 'Поиск писем...';
+                            document.getElementById('importStatus').innerText = '';
+                            document.getElementById('importResults').style.display = 'none';
+
+                            try {
+                                const res = await fetch('/api/parse-email', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        email,
+                                        password,
+                                        server
+                                    }),
+                                    credentials: 'include'
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                    document.getElementById('importStatus').style.color = '#10b981';
+                                    document.getElementById('importStatus').innerText = data.message || 'Импорт завершён';
+
+                                    // Показываем детальный список найденных подписок
+                                    const resultsDiv = document.getElementById('importResults');
+                                    if (data.addedDetails && data.addedDetails.length > 0) {
+                                        resultsDiv.style.display = 'block';
+                                        resultsDiv.innerHTML = '<div style="font-weight:600;margin-bottom:8px;">Добавлено:</div>' +
+                                            data.addedDetails.map(s =>
+                                                `<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:14px;">
+                                        <strong>${s.name}</strong>
+                                        ${s.price ? ` — ${s.price} ₽` : ' — цена не найдена, укажите вручную'}
+                                        <span style="color:#9ca3af;"> · ${s.payDay} числа</span>
+                                    </div>`
+                                ).join('') +
+                                (data.skipped && data.skipped.length > 0
+                                    ? `<div style="margin-top:8px;color:#9ca3af;font-size:13px;">Уже есть: ${data.skipped.join(', ')}</div>`
+                                    : '');
+                        } else if (data.skipped && data.skipped.length > 0) {
+                            resultsDiv.style.display = 'block';
+                            resultsDiv.innerHTML = `<div style="color:#9ca3af;font-size:13px;">Все найденные подписки уже добавлены: ${data.skipped.join(', ')}</div>`;
+                        }
+
+                        await loadSubscriptions();
+                        loadProfile();
+                        await loadAnalyticsData();
+                        loadUpcomingNotifications();
+                        if (data.addedDetails && data.addedDetails.length === 0 && (!data.skipped || data.skipped.length === 0)) {
+                            setTimeout(() => document.getElementById('emailImportModal').classList.remove('active'), 2000);
+                        }
                     } else {
                         document.getElementById('importStatus').style.color = '#dc2626';
                         document.getElementById('importStatus').innerText = data.error || 'Ошибка импорта';
                     }
                 } catch (e) {
                     document.getElementById('importStatus').style.color = '#dc2626';
-                    document.getElementById('importStatus').innerText = 'Ошибка соединения';
+                    document.getElementById('importStatus').innerText = 'Ошибка соединения с сервером';
                 } finally {
                     document.getElementById('startImportBtn').disabled = false;
                     document.getElementById('startImportBtn').innerText = 'Импортировать';
