@@ -7,7 +7,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200))  # в реальном проекте хешировать
+    password_hash = db.Column(db.String(256), nullable=False)
     avatar = db.Column(db.String(300), default='https://avatars.mds.yandex.net/i?id=1d31c64a866c718cd7b915b597b877ada4ee7880-4410363-images-thumbs&n=13')
     currency = db.Column(db.String(1), default='₽')
     subscriptions = db.relationship('Subscription', backref='user', lazy=True, cascade='all, delete-orphan')

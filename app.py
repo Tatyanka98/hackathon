@@ -4,6 +4,8 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import imaplib
 import email
+import email.header
+import email.utils
 import re
 from datetime import datetime, timedelta
 import random
@@ -321,43 +323,259 @@ def get_analytics():
         'forecastNextYear': forecast_next_year
     })
 
+# ─── Словарь известных сервисов-подписок ───────────────────────────────────────
+# Ключ: фрагмент домена/названия отправителя или темы (lowercase)
+# Значение: (display_name, category, price_rub — None если ищем в теле письма)
+KNOWN_SERVICES = {
+    'netflix':        ('Netflix',        'Видео',   None),
+    'spotify':        ('Spotify',        'Музыка',  None),
+    'apple':          ('Apple',          'Музыка',  None),
+    'yandex':         ('Яндекс Плюс',   'Музыка',  None),
+    'яндекс':         ('Яндекс Плюс',   'Музыка',  None),
+    'kinopoisk':      ('Кинопоиск',     'Видео',   None),
+    'кинопоиск':      ('Кинопоиск',     'Видео',   None),
+    'vk':             ('VK Музыка',     'Музыка',  None),
+    'okko':           ('Okko',           'Видео',   None),
+    'sberbank':       ('СберПрайм',     'Видео',   None),
+    'сбер':           ('СберПрайм',     'Видео',   None),
+    'mts':            ('МТС Premium',   'Видео',   None),
+    'мтс':            ('МТС Premium',   'Видео',   None),
+    'bookmate':       ('Bookmate',       'Книги',   None),
+    'litres':         ('Литрес',         'Книги',   None),
+    'литрес':         ('Литрес',         'Книги',   None),
+    'dropbox':        ('Dropbox',        'Облако',  None),
+    'google':         ('Google One',     'Облако',  None),
+    'icloud':         ('iCloud+',        'Облако',  None),
+    'adobe':          ('Adobe CC',       'Другое',  None),
+    'notion':         ('Notion',         'Другое',  None),
+    'chatgpt':        ('ChatGPT Plus',   'Другое',  None),
+    'openai':         ('ChatGPT Plus',   'Другое',  None),
+    'microsoft':      ('Microsoft 365',  'Другое',  None),
+    'ivi':            ('Иви',            'Видео',   None),
+    'иви':            ('Иви',            'Видео',   None),
+    'more.tv':        ('More.TV',        'Видео',   None),
+    'premier':        ('Premier',        'Видео',   None),
+    'zvuk':           ('Звук',           'Музыка',  None),
+    'звук':           ('Звук',           'Музыка',  None),
+    'telegram':       ('Telegram Premium','Другое', None),
+}
+
+# Паттерны для извлечения суммы из текста письма
+PRICE_PATTERNS = [
+    r'(\d[\d\s]*[,.]?\d*)\s*(?:руб|рублей|₽|RUB)',
+    r'(?:сумма|итого|списано|оплата|charged|amount|total)[^\d]{0,20}(\d[\d\s]*[,.]?\d*)',
+    r'(\d[\d\s]{1,6}[,.]?\d{0,2})\s*(?:р\.|р\b)',
+]
+
+def decode_header_value(value: str) -> str:
+    """Декодирует заголовок письма из RFC 2047."""
+    parts = email.header.decode_header(value)
+    decoded = []
+    for part, charset in parts:
+        if isinstance(part, bytes):
+            decoded.append(part.decode(charset or 'utf-8', errors='replace'))
+        else:
+            decoded.append(part)
+    return ' '.join(decoded)
+
+def get_email_text(msg) -> str:
+    """Извлекает текстовое содержимое письма (plain text или html stripped)."""
+    text = ''
+    if msg.is_multipart():
+        for part in msg.walk():
+            ct = part.get_content_type()
+            cd = str(part.get('Content-Disposition', ''))
+            if 'attachment' in cd:
+                continue
+            if ct == 'text/plain':
+                charset = part.get_content_charset() or 'utf-8'
+                text += part.get_payload(decode=True).decode(charset, errors='replace')
+                break
+            elif ct == 'text/html' and not text:
+                charset = part.get_content_charset() or 'utf-8'
+                html = part.get_payload(decode=True).decode(charset, errors='replace')
+                # Убираем теги — оставляем только текст
+                text += re.sub(r'<[^>]+>', ' ', html)
+    else:
+        charset = msg.get_content_charset() or 'utf-8'
+        text = msg.get_payload(decode=True).decode(charset, errors='replace')
+    return text
+
+def extract_price(text: str) -> float | None:
+    """Ищет первую упоминаемую сумму в тексте письма."""
+    for pattern in PRICE_PATTERNS:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            raw = re.sub(r'\s', '', m.group(1)).replace(',', '.')
+            try:
+                val = float(raw)
+                if 10 <= val <= 100000:   # правдоподобный диапазон цены подписки
+                    return round(val, 2)
+            except ValueError:
+                continue
+    return None
+
+def match_service(sender: str, subject: str) -> tuple | None:
+    """Определяет сервис по отправителю и теме."""
+    haystack = (sender + ' ' + subject).lower()
+    for keyword, service_info in KNOWN_SERVICES.items():
+        if keyword in haystack:
+            return service_info
+    return None
+
+def extract_pay_day(text: str, date_str: str) -> int:
+    """Пытается извлечь день списания из текста или даты письма."""
+    m = re.search(r'(?:каждое|каждый|ежемесячно\s+\d+|списание\s+\d+)[^\d]{0,5}(\d{1,2})', text, re.IGNORECASE)
+    if m:
+        day = int(m.group(1))
+        if 1 <= day <= 31:
+            return day
+    try:
+        t = email.utils.parsedate(date_str)
+        if t:
+            return t[2]
+    except Exception:
+        pass
+    return 1
+
+
 @app.route('/api/parse-email', methods=['POST'])
 def parse_email():
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.json
-    email_addr = data.get('email')
-    password = data.get('password')
-    server = data.get('server', 'imap.gmail.com')
+    email_addr = data.get('email', '').strip()
+    password   = data.get('password', '')
+    server     = data.get('server', '').strip()
 
-    # Демо-заглушка
-    if email_addr == 'demo@example.com' and password == '123':
-        test_subs = [
-            {'name': 'Netflix', 'price': 799, 'payDay': 15},
-            {'name': 'Spotify', 'price': 169, 'payDay': 10},
-            {'name': 'Apple Music', 'price': 249, 'payDay': 5}
+    if not email_addr or not password:
+        return jsonify({'error': 'Укажите email и пароль'}), 400
+
+    # Автоопределение IMAP-сервера если не указан
+    if not server:
+        domain = email_addr.split('@')[-1].lower()
+        imap_map = {
+            'gmail.com':       'imap.gmail.com',
+            'googlemail.com':  'imap.gmail.com',
+            'yahoo.com':       'imap.mail.yahoo.com',
+            'yandex.ru':       'imap.yandex.ru',
+            'ya.ru':           'imap.yandex.ru',
+            'mail.ru':         'imap.mail.ru',
+            'bk.ru':           'imap.mail.ru',
+            'inbox.ru':        'imap.mail.ru',
+            'list.ru':         'imap.mail.ru',
+            'outlook.com':     'outlook.office365.com',
+            'hotmail.com':     'outlook.office365.com',
+            'live.com':        'outlook.office365.com',
+            'rambler.ru':      'imap.rambler.ru',
+        }
+        server = imap_map.get(domain, f'imap.{domain}')
+
+    # Подключаемся по IMAP
+    try:
+        mail = imaplib.IMAP4_SSL(server, timeout=10)
+    except Exception as e:
+        return jsonify({'error': f'Не удалось подключиться к серверу {server}: {str(e)}'}), 400
+
+    try:
+        mail.login(email_addr, password)
+    except imaplib.IMAP4.error:
+        mail.logout()
+        return jsonify({'error': 'Неверный email или пароль. '
+                                  'Для Gmail используйте пароль приложения (не обычный пароль).'}), 401
+
+    try:
+        mail.select('INBOX')
+
+        # Ищем письма за последние 90 дней с ключевыми словами
+        since_date = (datetime.now() - timedelta(days=90)).strftime('%d-%b-%Y')
+        search_terms = [
+            f'(SINCE {since_date} SUBJECT "подписка")',
+            f'(SINCE {since_date} SUBJECT "subscription")',
+            f'(SINCE {since_date} SUBJECT "оплата")',
+            f'(SINCE {since_date} SUBJECT "списание")',
+            f'(SINCE {since_date} SUBJECT "receipt")',
+            f'(SINCE {since_date} SUBJECT "invoice")',
+            f'(SINCE {since_date} SUBJECT "payment")',
         ]
-        added = []
-        for sub_info in test_subs:
-            existing = Subscription.query.filter_by(user_id=user.id, name=sub_info['name']).first()
-            if not existing:
-                new_sub = Subscription(
-                    name=sub_info['name'],
-                    description='Импортировано из почты (демо)',
-                    category='Другое',
-                    price=sub_info['price'],
-                    pay_day=sub_info['payDay'],
-                    user_id=user.id
-                )
-                db.session.add(new_sub)
-                added.append(sub_info['name'])
-                hist = History(action=f'Автоматически добавлена подписка {sub_info["name"]} из почты (демо)', user_id=user.id)
-                db.session.add(hist)
-        db.session.commit()
-        return jsonify({'added': added, 'message': f'Добавлено {len(added)} подписок (демо)'})
 
-    return jsonify({'error': 'Реальный импорт из почты отключён. Используйте demo@example.com для теста.'}), 400
+        found_ids = set()
+        for term in search_terms:
+            _, ids = mail.search(None, term)
+            if ids[0]:
+                found_ids.update(ids[0].split())
+
+        added = []
+        skipped = []
+        seen_services = set()
+
+        for msg_id in list(found_ids)[:100]:  # не более 100 писем
+            _, msg_data = mail.fetch(msg_id, '(RFC822)')
+            raw = msg_data[0][1]
+            msg = email.message_from_bytes(raw)
+
+            sender  = decode_header_value(msg.get('From', ''))
+            subject = decode_header_value(msg.get('Subject', ''))
+            date    = msg.get('Date', '')
+            body    = get_email_text(msg)
+
+            service = match_service(sender, subject)
+            if not service:
+                continue
+
+            name, category, _ = service
+            if name in seen_services:
+                continue  # уже нашли эту подписку из другого письма
+            seen_services.add(name)
+
+            price   = extract_price(body) or extract_price(subject)
+            pay_day = extract_pay_day(body, date)
+
+            # Проверяем, нет ли уже такой подписки у пользователя
+            existing = Subscription.query.filter_by(user_id=user.id, name=name).first()
+            if existing:
+                skipped.append(name)
+                continue
+
+            new_sub = Subscription(
+                name=name,
+                description=f'Импортировано из письма: {subject[:80]}',
+                category=category,
+                price=price if price else 0.0,
+                pay_day=pay_day,
+                user_id=user.id
+            )
+            db.session.add(new_sub)
+            hist = History(
+                action=f'Автоматически добавлена подписка {name} из почты',
+                user_id=user.id
+            )
+            db.session.add(hist)
+            added.append({'name': name, 'price': price, 'payDay': pay_day})
+
+        db.session.commit()
+
+        msg_parts = [f'Найдено и добавлено: {len(added)}']
+        if skipped:
+            msg_parts.append(f'уже есть: {len(skipped)}')
+
+        return jsonify({
+            'added': [a['name'] for a in added],
+            'addedDetails': added,
+            'skipped': skipped,
+            'message': ', '.join(msg_parts)
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Ошибка при разборе почты: {str(e)}'}), 500
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(debug=True, port=5000)
